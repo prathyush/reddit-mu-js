@@ -1,0 +1,1784 @@
+<html>
+	<head>
+		<link rel="stylesheet" type="text/css" href="font-awesome/css/font-awesome.min.css"/>
+		<link rel="stylesheet" type="text/css" href="bootstrap3/dist/css/bootstrap.min.css" />
+		<script type="text/javascript" src="js/jquery-1.10.2.min.js"></script>
+		<script src="http://code.jquery.com/ui/1.10.3/jquery-ui.js"></script>
+		<link href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css" rel="stylesheet" type="text/css"/>
+		<script src="js/parseuri.js"></script>
+		<script src="js/quicksilver.js"></script>
+		<script src="js/jquery.scrollTo-1.4.3.1-min.js"></script>
+		<link rel="stylesheet" type="text/css" href="css/demo.css"/>
+		<link href="pnotify/jquery.pnotify.default.icons.css" media="all" rel="stylesheet" type="text/css" />
+		<script src="http://w.soundcloud.com/player/api.js"></script>
+		<script src="http://a.vimeocdn.com/js/froogaloop2.min.js?36191-1378685323"></script>
+		<script src="http://connect.soundcloud.com/sdk.js"></script>
+		<script type="text/javascript"> SC.initialize({client_id: "dab62a6ff784a2bdc938a8047675ccd0"}); </script>
+		<link href="pnotify/jquery.pnotify.default.css" rel="stylesheet" type="text/css" />
+		<!--		<script type="text/javascript" src="js/jquery.reddit.js"></script> -->
+		<script src="js/jquery.nicescroll.min.js"></script>
+		<script src="js/jquery.livesearch.orig.js"></script>
+	<script>
+		// Global variables
+		global = {};
+		options = {};
+
+		/*
+		 * Player States
+		 *
+		 * UNLOADED : 0
+		 * LOADED : 1
+		 * PLAYING : 2
+		 * PAUSED : 3
+		 * BUFFERING : 4
+		 * ERROR : 5
+		 */
+
+		global.playerState = 0;
+		global.videoid = undefined;
+		global.source = undefined;
+		global.duration = 0; //seconds
+		global.curTrackTime = 0; //milliseconds
+
+		/*
+		 * Options
+		 *
+		 */
+
+		 options.playlist = 1; // Playlist mode by default.
+		 options.autoplay = 1; // Start playing when selected.
+
+
+		//Youtube IFRAME API Code.
+
+		var tag = document.createElement('script');
+		tag.src = "https://www.youtube.com/iframe_api";
+		var firstScriptTag = document.getElementsByTagName('script')[0];
+		firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+		var player;
+		function onYouTubeIframeAPIReady() {
+			player = new YT.Player('yplayer', {
+				height: '1',
+				width: '1',
+				videoId: 'yv-Fk1PwVeU',
+				events: {
+					'onReady': onPlayerReady,
+					'onStateChange': onPlayerStateChange,
+					'onError': onPlayerError
+				}
+			});
+		}
+
+		function onPlayerReady(event) {
+			//					event.target.playVideo();
+			console.log('Youtube: Ready for requests.');
+			setInterval(updatePlayerInfo, 250);
+			updatePlayerInfo('youtube');
+		}
+
+		function onPlayerError(errorCode) {
+			if (errorCode.data != 150)
+				onError('youtube.com');
+		}
+
+		function onPlayerStateChange(event) {
+			if (event.data == YT.PlayerState.PLAYING) {
+				console.log('Youtube: Elapsed:'+player.getCurrentTime()+'. And, fraction :'+player.getVideoLoadedFraction()+'.');
+				global.duration = player.getDuration();
+				onPlay();
+			}
+			if (event.data == YT.PlayerState.CUED) {
+				console.log('Youtube: Cued');
+				global.duration = player.getDuration();
+			}
+			if (event.data == YT.PlayerState.ENDED) {
+				console.log('Youtube: Ended');
+				onFinish();
+			}
+			if (event.data == YT.PlayerState.BUFFERING) {
+				console.log("Youtube: Buffering.");
+				onBuffering();
+			}
+		}
+
+		function youtubeStopVideo() {
+			player.stopVideo();
+		}
+		function youtubePauseVideo() {
+			player.pauseVideo();
+		}
+		function youtubePlayVideo() {
+			console.log("Youtube: playVideo.");
+			player.playVideo();
+		}
+		function youtubePlayPauseVideo() {
+			var state = player.getPlayerState();	
+			if (state == 1) {
+				player.pauseVideo();
+				} else {
+				player.playVideo();
+			}
+		}
+
+		function youtubeLoadVideo(videoid) {
+			player.loadVideoById(videoid, 1, "default");
+			console.log('Youtube: Loding video by videoid:'+videoid+'.');
+			state = player.getPlayerState();
+			if (typeof(state) == 'undefined') {
+				//Seems to be an error
+			}
+		}
+
+		function playButtonPress() {
+			if ($("#play-pause i").hasClass('fw-icon-pause')) {
+				play = 0;
+				onPause();
+			}
+			else if ($("#play-pause i").hasClass('fw-icon-play')) {
+				play = 1;
+				onPlay();
+			}
+			/*
+			if (play == 0) {
+				console.log("Not playing ..");
+				widget.play();
+				} else {
+				console.log("Playing, so pausing.");
+				widget.pause();
+			}*/
+		}
+
+		function togglePlayPause() {
+			console.log("Play/Pause");
+			$("#play-pause i").toggleClass("fw-icon-play fw-icon-pause"); //.button('refresh');
+		}
+
+		function setSongDuration(song, duration) {
+			song.duration = duration;
+		}
+
+
+		$(document).ready(function() {
+			console.log('In ready.');
+
+			// Soundcloud API
+
+
+			window.scWidget	= SC.Widget(document.getElementById('soundcloud-player'));
+			window.scWidget.bind(SC.Widget.Events.READY, function() {
+				console.log('Soundcloud: Ready for requests.');	
+			});
+			window.scWidget.bind(SC.Widget.Events.PLAY, function() {
+				scWidget.getDuration(function(duration) {
+					console.log('Soundcloud: Duration:'+duration+'.');
+					setSongDuration(duration);
+					onPlay();
+				});
+			});
+			window.scWidget.bind(SC.Widget.Events.PLAY_PROGRESS, function(eventData) {
+				var curPosition = -1;
+				//console.log(JSON.stringify(eventData || {}));
+				scWidget.getPosition(function(position) {
+					console.log('Soundcloud: CurPos:'+curPosition+'.');
+				});
+				//				updateProgressBar(eventData);
+			});
+			window.scWidget.bind(SC.Widget.Events.LOAD_PROGRESS, function() {
+				console.log('Soundcloud: Loading.');
+				onBuffering();
+			});
+			window.scWidget.bind(SC.Widget.Events.PAUSE, function() {
+				console.log('Soundcloud: Paused');
+				onPause();
+			});
+			window.scWidget.bind(SC.Widget.Events.FINISHED, function() {
+				console.log('Soundcloud: Finished');
+				onFinish();
+			});
+			window.scWidget.bind(SC.Widget.Events.ERROR, function(eventData){
+				console.log('Soundcloud: Error');
+				console.log(JSON.stringify(eventData || {}));
+				onError('soundcloud.com');
+			});
+
+			// Vimeo IFRAME API Code.
+
+			var viframe = document.getElementById('vimeo-player');
+			vplayer = $f(viframe);
+
+			// When the player is ready, add listeners for pause, finish, and playProgress
+			vplayer.addEvent('ready', function() {
+				console.log("Vimeo: Ready for requests.");
+				vplayer.addEvent('pause', onPause);
+				vplayer.addEvent('play', onPlay);
+				vplayer.addEvent('finish', onFinish);
+				vplayer.addEvent('playProgress', onPlayProgress);
+			
+			});
+
+			// updateDuration();
+
+			$('.navlinks').click(function() {
+				text = $(this).text();
+				if (!$(this).parent().hasClass('active')) {
+					$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+					$(this).parent().parent().find('.active').removeClass('active');
+					$(this).parent().addClass('active');				
+					console.log('sub-reddit:'+text);
+					getTracks(text);
+				} else {
+					console.log('clicked on the same sub-reddit');
+				}
+
+			});
+
+			// Refer http://code.google.com/p/jquery-nicescroll/
+			$("html").niceScroll({styler:"fb",cursorcolor:"#000", cursorwidth:'2px', autohidemode : false});
+			$("#nav-side-bar").niceScroll();
+
+			//http://ejohn.org/blog/jquery-livesearch/
+			$('#subreddit-search').liveUpdate('subreddits').focus();
+			$('#progress-bar').hide();
+
+
+			initializeTooltips();
+			console.log('Done with doc.ready stuff');
+		});
+
+		$(window).load(function(){
+			// Refer http://code.google.com/p/jquery-nicescroll/
+			$("html").niceScroll({styler:"fb",cursorcolor:"#000", cursorwidth:'2px', autohidemode : false});
+			$("#nav-side-bar").niceScroll();
+			console.log("niceScroll-ed");
+		});
+
+		//Initilize tooltips
+		function initializeTooltips() {
+			$("[rel=tooltip]").tooltip({});
+			$("[rel=tooltip-right]").tooltip({ placement: 'right'});
+			$("[rel=tooltip-left]").tooltip({ placement: 'right'});
+			$("[rel=tooltip-top]").tooltip({ placement: 'right'});
+			$("[rel=tooltip-bottom]").tooltip({ placement: 'right'});
+		}
+
+		// Generic event handlers
+
+		function onPlay() {
+			console.log("onPlay : "+global.source+" playerState "+global.playerState+" global.videodid: "+global.videoid);
+			if (global.videoid != undefined) {
+				playVideo(global.source);
+				$("#play-pause i").removeClass("fw-icon-play").addClass("fw-icon-pause"); //.button('refresh');
+				global.playerState = 2;
+			} else {
+				console.log("then, else, then");
+				playFirstTrack();
+			}
+		}
+
+		function onPause() {
+			global.playerState = 3;
+			console.log('onPause : '+global.source);
+			pauseVideo(global.source);
+			$("#play-pause i").removeClass("fw-icon-pause").addClass("fw-icon-play"); //.button('refresh');
+		}
+		function onError(source) {
+			global.playerState = 5;
+			global.source = undefined;
+			$("#play-pause i").removeClass("fw-icon-pause").addClass("fw-icon-play"); //.button('refresh');
+			//alert(source+': Error.');
+			errorMsg = {};
+			errorMsg.title = "Playback Error";
+			errorMsg.text = "We couldn't get to play the track, probably, because of embed restrictions";
+			notifyError(errorMsg);
+			$("#playlist-tracks").find(".active").addClass("track-error");
+			playNextTrack();
+		}
+		function onPlayProgress() {
+		}
+		function onPlaying() {
+		}
+		function onBuffering() {
+			global.playerState = 4;
+			console.log("Buffering...");
+		}
+		function onFinish() {
+			$("#play-pause i").removeClass("fw-icon-pause").addClass("fw-icon-play"); //.button('refresh');
+			playNextTrack();
+		}
+
+		function showValue(event, ui) {
+			$("#val").html(ui.value);
+		}
+
+		function updatePlayerInfo() {
+		}
+
+		// AJAX request for playlist.
+
+		function submit_ajax(text) {
+			$.ajax({
+				type: 'POST',
+				url: '',
+				beforeSend : function() {
+					console.log("beforeSend: "+$("#nav-side-bar").find(".active").html());
+					$("#nav-side-bar").find(".active").find("i").addClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+				},
+				data: { 'csrfmiddlewaretoken':'{{csrf_token}}',
+					'subreddit' : text,
+					'limit' : 200
+				},
+				success: function(data, status, xhr) {
+				console.log(status);
+				/*
+					var errors = jQuery.parseJSON(data);
+					if (errors) {
+						$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+						alert("Fetch failed, try again");
+						} else {
+				*/
+					console.log("AJAX success; status:"+status);
+					//console.log("data: "+data);
+					$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+					$("#playlist").html(data);
+					//Initialize niceScroll.
+					$("#playlist-tracks").niceScroll();
+					if (options.autoplay)
+						playFirstTrack();
+						initializeTooltips();
+						}
+				
+			});
+		}
+
+		function getTracks (subreddit) {
+			var num = 200;
+			var redditURL = "http://www.reddit.com/r/" +subreddit+ "/.json?limit="+num+"&jsonp=?";
+			var regex = new RegExp("(youtube.com|soundcloud.com|youtu.be|vimeo.com)");
+
+			$("#nav-side-bar").find(".active").find("i").addClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+			$.getJSON(redditURL, function (response) {
+				// Set loading playlist to False
+				var data = response.data;				
+				for ( i=0; i < data.children.length; i++) {
+					cdata = data.children[i].data;
+					if (regex.test(cdata.domain)) {
+					var source;
+					var videoid;
+					var title = escape(cdata.title);
+						var parser = parseUri(cdata.url);
+						switch (cdata.domain) {
+							case 'youtu.be':
+								source = 'youtube.com';
+								videoid =  parser.path.split('/')[1];
+								break;
+							case 'youtube.com':
+								source = 'youtube.com';
+								videoid = parser.queryKey['v'];
+								break;	
+							default:
+								source = cdata.domain;
+								videoid =  parser.path.split('/')[1];
+								break;
+						}
+						var itemHTML = "<span class=\"list-group-item playlist-track\" id='"+ videoid +"' onclick=\"loadVideo.call(this, {'url':'" + cdata.url + "','videoid' : '" + videoid +"', 'source' : '"+source+"', 'title' : '"+title+"'})\">"+cdata.title;
+						$("#playlist").append(itemHTML);
+					}
+				}
+			});
+		}	
+
+		function updateProgressBar(eventData) {
+			var pbWidth = $('#progress-bar').width();
+			//					var loading = eventData.loading;
+			var currentPosition = eventData.currentPosition/1000;
+			var relativePosition = eventData.relativePosition;
+			var scrubberWidth = relativePosition*pbwidth;
+			if (scrubberWidth > 0) {
+				$('#scrubber').css('left', scrubberWidth+'px');
+			}
+			$("#time-elapsed").text("");
+			$("#time-total").text("");
+		}
+
+		function stopButtonPress() {
+		}
+
+		function loadIframe(iframeName, params) {
+			var $iframe = $('#' + iframeName);
+			if ($iframe.length) {
+				//set iframe attributes
+				$iframe.attr('src', params['src']);
+				$iframe.attr('width', 400);
+				$iframe.attr('height', 400);
+				$iframe.attr('frameborder', 'no');
+				console.log('loadIframe: done');
+				return false;
+			}
+			return true;
+		}
+
+		function loadSoundCloud (videoid) {
+			console.log("loadSoundCloud: begin");
+			var widgetIframe = document.getElementById('soundcloud-player');
+			widget = SC.Widget(widgetIframe);
+			var src="http://w.soundcloud.com/player/?url=https://api.soundcloud.com/"+videoid+"&show_artwork=false&liking=false&sharing=false&auto_play=false";
+			//					loadIframe('soundcloud-player', {'src': src });
+			widget.load(src, {
+				show_artwork: false
+			});
+		}
+
+		function loadSoundCloud_sdk (videoid) {
+			console.log("loadSoundCloud: begin");
+			SC.stream(videoid, function(sound) {
+				sound.play();
+			});
+		}
+
+		function stopSoundcloud() {
+			var widgetIframe = document.getElementById('soundcloud-player');
+			widget = SC.Widget(widgetIframe);
+			widget.pause();
+		}
+
+		function startSoundcloud() {
+			var widgetIframe = document.getElementById('soundcloud-player');
+			widget = SC.Widget(widgetIframe);
+			widget.play();
+		}
+
+		function loadVimeo(videoid) {
+			srcStr = "http://player.vimeo.com/video/"+videoid+"?api=1&player_id=vimeo-player&autoplay=1";
+			loadIframe('vimeo-player', {'src': srcStr});
+		}
+
+		function loadVideo(song) {
+			//Lets set the player state to loading
+			global.playerState = 1;
+
+
+			//scroll to that element
+//			$("#playlist-tracks").scrollTo($(this), 1000);
+
+			console.log('loadVideo');	
+			source = song['source'];
+			videoid = song['videoid'];
+			console.log('source :'+source);	
+			$(this).parent().find('.active').removeClass('active');
+			$(this).addClass('active');
+
+			if ((global.videoid != undefined) && (global.videoid == videoid)) {
+				//alert("Already playing this no - doing nothing "+global.videoid+" "+videoid);
+				return; //already playing this, what the hell, go use the player controls.
+			} else {
+				global.videoid = videoid;
+			}
+
+			if ((typeof(global.source) != undefined) && (global.source != source)) {
+				console.log('Switching the source from:'+global.source+' to '+source);
+				//alert('Switching the source from:'+global.source+' to '+source);
+				//Then we make sure we stop playing whatever's in place.
+				stopVideo(global.source);	
+				global.source = source;
+			}
+
+			switch(source) {
+				case 'youtube.com':
+					youtubeLoadVideo(videoid);
+					break;
+				case 'soundcloud.com':
+					loadSoundCloud(videoid);
+					break;
+				case 'vimeo.com':
+					loadVimeo(videoid);
+					break;
+				default:
+					break;	
+
+			}
+				
+			// Update Player meta-data
+			console.log(unescape(song.title).replace("&#39;", "'"));
+			$("#track-name").find("a").text(unescape(song.title).replace("&#39;", "'"));
+			$("#track-name").find("a").attr("href", song.url);
+			$("#track-name").find("a").attr("title", " Watch the video on "+song.source+".");
+			$("#track-source").text(song.source);
+		}
+
+		function stopVideo(source) {
+			console.log('stopVideo: For '+source);
+			//alert('stopVideo: For '+source);
+			switch(source) {
+				case 'youtube.com':
+					youtubeStopVideo();
+					break;
+				case 'vimeo.com':
+					vplayer.api('unload');
+					break;
+				case 'soundcloud.com':
+					stopSoundcloud();
+				default:
+					break;	
+			}
+		}
+
+		function playVideo(source) {
+			console.log('playVideo: '+source);
+			switch(source) {
+				case 'youtube.com':
+				youtubePlayVideo();
+				break;
+				case 'vimeo.com':
+				vplayer.api('play');
+				break;
+				case 'soundcloud.com':
+				playSoundcloud();
+				break;
+				default:
+				break;
+			}
+		}
+
+		function pauseVideo(source) {
+			console.log('pauseVideo: '+source);
+			switch(source) {
+				case 'youtube.com':
+					youtubePauseVideo();
+				break;
+				case 'vimeo.com':
+					vplayer.api('pause');
+				break;
+				case 'soundcloud.com':
+					pauseSoundcloud();
+				break;
+				default:
+				break;
+			}
+		}
+
+		function playNextTrack() {
+			var curTrack = $('#playlist').find('.active');
+			curTrack.removeClass('active');
+			var nextTrack = curTrack.next('.list-group-item')
+			nextTrack.addClass('active');
+			/*
+			var videoid = nextTrack.attr('id');
+			var source = nextTrack.find('.list-group-item-text').text();
+			console.log('Next Track: '+videoid+', source: '+source);
+			loadVideo({'videoid' : videoid, 'source' : source});
+			*/
+			nextTrack.trigger('click');
+		}
+
+		function playPrevTrack() {
+			var curTrack = $('#playlist').find('.active');
+			curTrack.removeClass('active');
+			var prevTrack = curTrack.prev('.list-group-item')
+			prevTrack.addClass('active');
+			/*
+			var videoid = prevTrack.attr('id');
+			var source = prevTrack.find('.list-group-item-text').text();
+			console.log('Previous Track: '+videoid);
+			loadVideo({'videoid' : videoid, 'source' : source});
+			*/
+			prevTrack.trigger('click');
+		}
+
+		
+		function playFirstTrack() {
+			//alert('playFirstTrack()');
+			var firstTrack = $("#playlist-tracks span:first-child");	
+			if (firstTrack.length) {
+				firstTrack.trigger('click');
+				console.log('playFirstTrack()');
+				}
+			else 
+				notifyError({title : "Playlist Error", text : "Looks like you haven't selected any subreddit."});
+			}
+
+		// errorMsg = { title, text }
+		function notifyError(errorMsg) {
+			$.pnotify({
+				title: errorMsg.title,
+				text:  errorMsg.text,
+				type: 'error',
+				styling: 'bootstrap',
+				animation: 'fade'
+			});
+		}
+
+		function consume_alert() {
+			window.alert = function(message) {
+				$.pnotify({
+					title: 'Alert',
+					text: message
+				});
+			};
+			console.log('consuming alerts');
+
+		}
+		consume_alert();
+		</script>
+	<body>  
+		<div id="wrap">
+			<div id="players" style='visibility: hidden; height: 2px; width: 2px'>
+				<div id="splayer">
+					<iframe  id="soundcloud-player" src="http://w.soundcloud.com/player/?url=https://api.soundcloud.com/aurora-florence/forever-and-a-day&show_artwork=false&liking=false&sharing=false&auto_play=false" width='1' height='1'></iframe>
+				</div>
+				<div id="yplayer" >
+					<div id="youtube-player"></div>
+				</div>
+				<div id="vplayer">
+					<iframe id="vimeo-player" src="http://player.vimeo.com/video/27855315?api=1&player_id=vimeo-player" width="1" height="1" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+				</div>
+			</div> <!-- players --> 
+			<!-- title div -->
+			<div id="title-bar">
+				<span id="title-text">//reddit-music <i class='fw-icon-headphones'></i></span>
+				<span id="title-author" class="pull-right"></span>
+			</div>
+			<div id="nav-side-bar-search">
+				<span id="" class=""><i class="fw-icon-search"></i></span>
+				<input type="text" autocomplete="off" class="" name="subreddit-search" id="subreddit-search" placeholder="//subreddit"/>
+				<hr color="black" width="100px">
+			</div>
+			<div id="nav-side-bar">
+				<ul class="nav nav-pills nav-stacked" id="subreddits">
+					<!--	{% include "vidlist/nav-side-bar.html" %} -->
+					<li><a class="navlinks" href="#">jazz</a><i class="pull-right"></i></li>
+					<li><a class="navlinks" href="#">jazz</a><i class="pull-right"></i></li>
+					<li><a class="navlinks" href="#">jazz</a><i class="pull-right"></i></li>
+					<li><a class="navlinks" href="#">jazz</a><i class="pull-right"></i></li>
+					<li><a class="navlinks" href="#">baroque</a><i class="pull-right"></i></li>
+<li><a class="navlinks" href="#">/r/composer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/baroque<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/classicalmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/contemporary<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/concertband<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/choralmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ChamberMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/EarlyMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/earlymusicalnotation<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ElitistClassical<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/icm<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Opera<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/orchestra<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/acidhouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ambientmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AStateOfTrance<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AtmosphericDnB<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/BigBeat<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/boogiemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/breakbeat<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/breakcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/brostep<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/chicagohouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/chillout<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Chipbreak<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Chiptunes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/complextro<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/darkstep<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DnB<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DubStep<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/electronicdancemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ElectronicJazz<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ElectronicBlues<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/electrohiphop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/electrohouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/electronicmagic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ElectronicMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/electropop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/electroswing<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ExperimentalMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/fidget<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/filth<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/frenchelectro<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/frenchhouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/funkhouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/fusiondancemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/futurebeats<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FutureFunkAirlines<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FutureGarage<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/futuresynth<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/gabber<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/glitch<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/glitchop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Grime<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/happyhardcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/hardhouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/hardstyle<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/house<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/idm<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/industrialmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ItaloDisco<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/LiquidDubstep<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/mashups<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/minimal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/mixes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/moombahcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/nightstep<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/OldskoolRave<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/partymusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/psybient<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PsyBreaks<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/psytrance<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/purplemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/raggajungle<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RealDubstep<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/skweee<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/swinghouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/tech_house<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Techno<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Trance<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/tranceandbass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/trap<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/tribalbeats<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ukfunky<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/80sHardcorePunk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/90sAlternative<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/90sRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AlternativeRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AltCountry<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AORMelodic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ausmetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/BlackMetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bluegrass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Blues<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bluesrock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CanadianClassicRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CanadianMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ClassicRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/country<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Christcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/crunkcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/deathcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/deathmetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Djent<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DoomMetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Drone<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/EmoScreamo<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/flocked<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/folk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/folkmetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/folkpunk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/folkrock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GaragePunk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GothicMetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Grunge<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/hardcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/HardRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/horrorpunk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/indie_rock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/jrock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/krautrock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/LadiesofMetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MathRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/melodicdeathmetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MelodicMetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MetalNews<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Metalmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/metal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/metalcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/monsterfuzz<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/neopsychedelia<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/NewWave<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/noiserock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/numetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/pianorock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/poppunkers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PostHardcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PostRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/powermetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/powerpop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ProgMetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/progrockmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PsychedelicRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/punk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Punkskahardcore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Punk_Rock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Rock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/shoegaze<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/stonerrock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/symphonicblackmetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/symphonicmetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/synthrock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/truethrash<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Truemetal<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/OutlawCountry<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/WomenRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/90sHipHop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/altrap<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/asianrap<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/backspin<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ChapHop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Gfunk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/HipHopHeads<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Rap<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/rapverses<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/trapmuzik<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/2010smusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/2000smusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/90sMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/80sMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/70sMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/60sMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/50sMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/70s<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Acappella<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AcousticCovers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/afrobeat<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/animemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/balkanbrass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/balkanmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/boomswing<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bossanova<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/britpop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/carmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/concerts<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/chillmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/cpop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CrappyMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/dembow<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/disco<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DreamPop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Elephant6<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Exotica<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FilmMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FunkSouMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/gamemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GypsyJazz<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/HispanicMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/IndieFolk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Irishmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ItalianMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/jambands<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/jazz<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/jpop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/kpop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/listentoconcerts<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/klezmer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/lt10k<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MelancholyMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/minimalism_music<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/motown<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MovieMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/muzyka<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/oldiemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/OldiesMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/pianocovers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PopMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PoptoRock<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/rainymood<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/recordstorefinds<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/reggae<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/remixxd<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RetroMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/rnb<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/rootsmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SalsaMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Ska<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/songbooks<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Soulies<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SoundsVintage<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SpaceMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/swing<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Tango<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheRealBookVideos<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TouhouMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TraditionalMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/treemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/triphop<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/VintageObscura<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/vocaloid<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/WorldMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/audioinsurrection<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/danktunes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/albumaday<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/albumoftheday<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Albums<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/albumlisteners<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bassheavy<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Catchysongs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Chopping<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CircleMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CoverSongs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DANCEPARTY<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/EarlyMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/earlymusicalnotation<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FemaleVocalists<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/findaband<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/freemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Frisson<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/gameofbands<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GayMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/germusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/gethightothis<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FitTunes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/HeadNodders<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/heady<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/HeyThatWasIn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/HighFidelity<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ifyoulikeblank<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/indie<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/IndieWok<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Instrumentals<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ipm<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/IsolatedVocals<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/LetsTalkMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/listentoconcerts<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/listentomusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/listentonews<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ListenToThis<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ListenToUs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/livemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/llawenyddhebddiwedd<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Lyrics<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/mainstreammusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MiddleEasternMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MLPtunes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Music<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicAlbums<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicsuggestions<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicToSleepTo<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicvideos<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/NewAlbums<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/newmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/onealbumaweek<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/partymusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RedditOriginals<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RepublicOfMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RoyaltyFreeMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/runningmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Samples<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SpotifyMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ThemVoices<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/unheardof<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/WTFMusicVideos<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AlbumArtPorn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/albumreviews<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Audio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Audiophile<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AustinMusicians<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bandmembers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CarAV<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CassetteCulture<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Cd_collectors<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ConcertTickets<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/germusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ICoveredASong<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ifyoulikeblank<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/independentmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ineedasong/<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/japanesemusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/koreanmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/LubbockMusicians<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/mixcd<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musiccritics<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicessentials<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicEventMeetUp<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicfestivals<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicnews<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusiciansBlogs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Musicians<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/OSOM<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/performer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RecordClub<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/recordstore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/redditmusicclub<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Rockband<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RockbandChallenges<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TipOfMyTongue<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TouringMusicians<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/vinyl<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/VinylReleases<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/WeAreTheMusicMakers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AcousticOriginals<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Composer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ICoveredASong<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicCritique<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicInTheMaking<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MyMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RadioReddit<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ratemyband<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Songwriters<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheseAreOurAlbums<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ThisIsOurMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/independentmusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/300Songs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/311<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ArcadeFire<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/APerfectCircle<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheAvettBrothers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/BaysideIsACult<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheBeachBoys<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Beatles<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/billytalent<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Blink182<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/BMSR<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/boniver<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/brandnew<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/BruceSpringsteen<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Burial<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/cityandcolour<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Coldplay<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/CutCopy<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheCure<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DaftPunk<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DavidBowie<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Deadmau5<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DeepPurple<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Deftones<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DieAntwoord<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DMB<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/elliegoulding<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/empireofthesun<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/EnterShikari<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/feedme<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FirstAidKit<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/flaminglips<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/franzferdinand<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Gorillaz<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/gratefuldead<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Greenday<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GunsNRoses<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Incubus<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/JackWhite<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/John_frusciante<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/kings_of_leon<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ladygaga<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/lanadelrey<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/lennykravitz<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Led_Zeppelin<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Macklemore<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Manowar<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MattAndKim<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Megadeth<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Metallica<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MGMT<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MinusTheBear<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ModestMouse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Morrissey<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MyChemicalRomance<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Muse<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/NeilYoung<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/NIN<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Nirvana<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/oasis<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Opeth<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/OFWGKTA<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/OutKast<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/panicatthedisco<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PearlJam<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/phish<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Pinback<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PinkFloyd<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/porcupinetree<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/prettylights<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Puscifer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Queen<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Radiohead<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RATM<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RedHotChiliPeppers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/The_Residents<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RiseAgainst<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Rush<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SigurRos<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/slipknot<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheKillers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheOffspring<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheStrokes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/TheMagneticZeros<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/UnicornsMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Slayer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SmashingPumpkins<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SparksFTW<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ToolBand<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/tragicallyhip<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/U2Band<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Umphreys<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/velvetunderground<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Ween<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/weezer<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/WeirdAl<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/yesband<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Zappa<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AlbumArtPorn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/BandPorn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/concertporn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/InstrumentPorn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MetalMemes<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicPics<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GrooveSharkPlaylists<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DJs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/PirateRadio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Spotify<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Turntablists<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/abletonclass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bandmembers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/bassLessons<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DancePerformance<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/earlymusicalnotation<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Ethnomusicology<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ExplainThisSong<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GuitarLessons<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/LearnMusic<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicEd<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicindustry<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicInstructor<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/musicology<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MusicTheory<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/solresol<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/tabs<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Accordion<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/banjo<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Bass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Bassoon<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/beatbox<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/brass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Cello<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Clarinet<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ClassicalGuitar<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DoubleBass<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Drummers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Drums<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Flute<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Guitar<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/hammondorgan<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/handpan<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/harmonica<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Horn<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/keys<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/luthier<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Oboe<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Ocarina<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Percussion<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Percussionists<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Piano<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Piccolo<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Recorder<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/saxophone<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/saxophonics<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Singing<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/synthesizers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Telecaster<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Trombone<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Trumpet<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/tuba<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ukulele<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/viola<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Violinist<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AudioEngineering<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/EDMproduction<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/FL_Studio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AbletonLive<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/AudioPost<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Cubase<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/futurebeatproducers<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GameAudio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/linuxaudio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/LocationSound<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Logic_Studio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/MaxMSP<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/ProductionLounge<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Protools<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/RateMyAudio<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Reaper<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Reasoners<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Remix<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Renoise<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Samplehunters<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/SongStems<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/VSTi<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/DIYGear<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Gear4Sale<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/GuitarPedals<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/skullcandy<i class="pull-right"></i></a></li>
+	
+		<li><a class="navlinks" href="#">/r/Synthesizers<i class="pull-right"></i></a></li>	
+				</ul>
+			</div> <!-- nav-side-bar -->
+			<div id="navigation-end">
+				<hr color="black" width="100px">
+			</div>
+			<div class="container">
+				<div id='player-container' class=''>
+					<div id='player-controls' class='' style="">
+						<div id="previous" class='' onclick='playPrevTrack()' href='#' style='text-decoration: none'><i class="fw-icon-step-backward fw-icon-3x"></i></div>
+						<div id="play-pause" class='' onclick='playButtonPress()' href='#' style='text-decoration: none'><i class="fw-icon-play fw-icon-5x"></i></div>
+						<div id="next" class='' onclick='playNextTrack()' href='#' style='text-decoration: none'><i class="fw-icon-step-forward fw-icon-3x"></i></div>
+					</div> <!-- player-controls -->
+					<div id="now-playing"><span id="track-name"><a target="_blank" rel="tooltip-top" title="google.com" href="#">//Song</a></span><br><span id="track-source">//Source</span></div>
+					<!--			<div id="seekbar"></div> -->
+					<!--			<span id="time-elapsed">0:00</span> -->
+					<!--
+					<div id="progress-bar">
+						<div id="scrubber" class='fw-icon-circle pull-left' style="left: 0px; color: white; margin-top: 0px;"></div> -->
+						<!--					<div id="buffered" style="width: 0%"></div> -->
+						<!--					<div id="elapsed" style="width: 0%"></div>
+					</div> -->
+					<!--			<span id="time-total">0:00</span> --> 
+				</div> <!-- player-container -->
+				<div style="clear: both"></div>
+				<div id='playlist'>
+					<blockquote>Just pick a subreddit, will yeah ?</blockquote>
+				</div> <!-- playlist -->
+			</div> <!-- content -->
+		</div> <!-- wrapper -->
+		<div id="footer">
+			<div class="container">
+				<p class="text-muted credit">Created and Maintained by <a href="#">Prathyush Thota</a>.&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://github.com/prathyush/reddit-music">Github.</a></i></p>
+		</div>
+	</div>
+
+
+	<!-- Bootstrap core JavaScript
+	================================================== -->
+	<!-- Placed at the end of the document so the pages load faster -->
+	<script src="bootstrap3/dist/js/bootstrap.min.js"></script>
+	<script src="bootstrap3/dist/js/bootstrap.js"></script>
+	<script type="text/javascript" src="pnotify/jquery.pnotify.min.js"></script>
+</body>
+</html>

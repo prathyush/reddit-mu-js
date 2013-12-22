@@ -304,6 +304,7 @@
 			global.playerState = 4;
 			console.log("Buffering...");
 		}
+
 		function onFinish() {
 			$("#play-pause i").removeClass("fw-icon-pause").addClass("fw-icon-play"); //.button('refresh');
 			playNextTrack();
@@ -363,8 +364,17 @@
 				}
 				console.log("count "+count);
 				$("#playlist-tracks").html(itemHTML);
-			});
+				var meta = "<span>" + count+" tracks found for /r/"+subreddit+"</span>";
+				$("#playlist-meta").html(meta);
+			})
+			.done (function() {
+				console.log("done");
 				$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+			})
+			.always(function() {
+				console.log("always");
+				$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
+			});
 					$("#playlist-tracks").niceScroll();
 		}	
 
@@ -1738,7 +1748,7 @@
 				</div> <!-- player-container -->
 				<div style="clear: both"></div>
 				<div id='playlist'>
-					<blockquote>Just pick a subreddit, will yeah ?</blockquote>
+					<div id="playlist-meta"><span>Just pick a subreddit, will yeah ?</span></div>
 					<div id="playlist-tracks" class="list-group" hidefocus="hidefocus">
 					</div>
 				</div> <!-- playlist -->

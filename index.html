@@ -227,6 +227,7 @@
 					$(this).parent().parent().find('.active').removeClass('active');
 					$(this).parent().addClass('active');				
 					console.log('sub-reddit:'+text);
+					$("#nav-side-bar").find(".active").find("i").addClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
 					getTracks(sreddit);
 				} else {
 					console.log('clicked on the same sub-reddit');
@@ -325,7 +326,13 @@
 				// Set loading playlist to False
 				var data = response.data;				
 				if (data.children.length > 0) {
+					console.log("length - ", data.children.length);
 				}
+
+				var itemHTML = "";
+				var count = 0;
+
+				$("#playlist-tracks").html("Fetching tracks ..");
 
 				for ( i=0; i < data.children.length; i++) {
 					cdata = data.children[i].data;
@@ -348,13 +355,17 @@
 								videoid =  parser.path.split('/')[1];
 								break;
 						}
-						var itemHTML = "<span class=\"list-group-item playlist-track\" id='"+ videoid +"' onclick=\"loadVideo.call(this, {'url':'" + cdata.url + "','videoid' : '" + videoid +"', 'source' : '"+source+"', 'title' : '"+title+"'})\">"+cdata.title;
-						$("#playlist-tracks").append(itemHTML);
+						itemHTML = itemHTML + " <span class=\"list-group-item playlist-track\" id='"+ videoid +"' onclick=\"loadVideo.call(this, {'url':'" + cdata.url + "','videoid' : '" + videoid +"', 'source' : '"+source+"', 'title' : '"+title+"'})\">"+cdata.title+"</span>";
+						console.log("adding "+cdata.title);
+						//						$("#playlist-tracks").append(itemHTML);
+						count++;
 					}
 				}
+				console.log("count "+count);
+				$("#playlist-tracks").html(itemHTML);
 			});
+				$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
 					$("#playlist-tracks").niceScroll();
-			$("#nav-side-bar").find(".active").find("i").removeClass("fw-icon-spinner fw-icon-spin fw-icon-2x");
 		}	
 
 		function updateProgressBar(eventData) {
